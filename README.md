@@ -1,64 +1,77 @@
-# ESP8266 Web Relay Control
+# ESP8266 Timer Switch
 
 ## Overview
 
-This project enables you to control relays connected to an ESP8266 module through a web interface. You can set specific times for the relays to turn on and off.
+This project utilizes the ESP8266 WiFi module to control two relays based on user-defined time settings. It includes a web interface for configuring relay schedules and provides real-time status updates on an LCD screen.
 
-## Hardware Requirements
+## Features
 
-- ESP8266 module
-- 2-channel relay module
-- Liquid Crystal Display (LCD) with I2C interface
-- Resistors, wires, etc.
+- Set custom on/off schedules for two relays.
+- Web-based configuration interface.
+- Real-time status display on a 16x2 LCD.
+- WiFi connectivity with automatic network creation if connection fails.
 
-## Software Requirements
+## Table of Contents
 
-- Arduino IDE
+- [Overview](#overview)
+- [Features](#features)
+- [Setup](#setup)
+  - [Hardware Requirements](#hardware-requirements)
+  - [Software Requirements](#software-requirements)
+  - [Configuration](#configuration)
+- [Usage](#usage)
+  - [Web Interface](#web-interface)
+  - [LCD Display](#lcd-display)
+  - [Variable Retrieval](#variable-retrieval)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Setup
+
+### Hardware Requirements
+
+- ESP8266 board (e.g., NodeMCU)
+- 16x2 I2C LCD
+- Two-channel relay module
+- Resistors, wires, and power supply
+
+### Software Requirements
+
+- [Arduino IDE](https://www.arduino.cc/en/software)
 - ESP8266 board support package
-- Libraries: LiquidCrystal_I2C
+- LiquidCrystal_I2C library
+- ArduinoJson library
 
-## Getting Started
+### Configuration
 
-1. Clone or download this repository.
-
-2. Open the project in the Arduino IDE.
-
-3. Install the required libraries through the Arduino Library Manager.
-
-4. Update the `arduino_secrets.h` file with your WiFi credentials.
-
-5. Upload the code to your ESP8266 module.
-
-6. Open the Serial Monitor to view debug information.
-
-7. Connect to the WiFi network created by your ESP8266.
-
-8. Access the web interface through your browser to set relay timings.
+1. Install the required libraries in the Arduino IDE.
+2. Open the `uploaded_code.ino` file in the Arduino IDE.
+3. Update the `arduino_secrets.h` file with your WiFi credentials.
+4. Upload the code to your ESP8266 board.
 
 ## Usage
 
-- Visit the ESP8266's IP address in your browser to set relay timings.
+### Web Interface
 
-- Relay 1: [IP_ADDRESS]/?hour1=[HOUR]&minute1=[MINUTE]
+1. Connect to the WiFi network created by the ESP8266.
+2. Open a web browser and navigate to the IP address displayed on the LCD.
+3. Set the desired on/off schedules for relay 1 and relay 2.
+4. Click "Set Time" to apply the changes.
 
-- Relay 2: [IP_ADDRESS]/?hour2=[HOUR]&minute2=[MINUTE]
+### LCD Display
 
-## API (Task 3)
+The LCD displays real-time information, including charging status and relay schedules.
 
-To programmatically set relay timings, send a POST request to the following endpoint:
+### Variable Retrieval
 
-- Endpoint: [IP_ADDRESS]/set-timings
+To retrieve variable values via a GET request:
 
-- Payload: JSON format
-  ```json
-  {
-    "relay1": {
-      "hour": 12,
-      "minute": 30
-    },
-    "relay2": {
-      "hour": 15,
-      "minute": 45
-    }
-  }
-  ```
+- Send a GET request to `http://[ESP_IP_ADDRESS]/get-values`.
+- The response will be a JSON object containing:
+  - `targetTimeRelay1`: Schedule for relay 1.
+  - `targetTimeRelay2`: Schedule for relay 2.
+  - `currentTime`: Current time in minutes.
+
+## Contributing
+
+Contributions are welcome! Feel free to open issues and submit pull requests.

@@ -1,6 +1,6 @@
-//$ last work 10/December/23 [11:14 PM]
-// # version 0.3
-// # Release Note : readme file and get variable value functionality added
+//$ last work 10/December/23 [12:27 AM]
+// # version 0.4
+// # Release Note : created own network if not connected within timeout
 #include "arduino_secrets.h"
 #include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
@@ -13,6 +13,8 @@ const char *password = MY_PASSWORD;
 
 // Create an instance of the LiquidCrystal_I2C class
 LiquidCrystal_I2C lcd(0x27, 16, 2); // 0x27 is the I2C address for the LCD
+
+#define WIFI_CONNECTION_TIMEOUT 10 // 10 seconds
 
 // Define the pin numbers for the relays
 const int relay1Pin = 12;   // Change to your desired pin for relay 1
@@ -54,17 +56,24 @@ void setup() {
   WiFi.begin(ssid, password);
   lcd.clear();
   lcd.setCursor(0, 0);
-  while (WiFi.status() != WL_CONNECTED) {
+  while (WiFi.status() != WL_CONNECTED &&
+         (millis() / 1000) < WIFI_CONNECTION_TIMEOUT) {
     delay(1000);
-    lcd.print("Connected");
     Serial.println("Connecting to WiFi...");
+    lcd.setCursor(0, 0);
+    lcd.print("Connecting...");
   }
 
-  // Display connected to Wi-Fi message
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Connected");
-  Serial.println("Connected");
+  // Check if connected
+  if (WiFi.status() == WL_CONNECTED) {
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Connected");
+    Serial.println("Connected");
+  } else {
+    // If not connected within the timeout, create its own network
+    createOwnNetwork();
+  }
 
   // Set up the relays as outputs
   pinMode(relay1Pin, OUTPUT);
@@ -114,8 +123,13 @@ void loop() {
               .toInt();
 
       // Check if the extracted values for relay 1 are non-zero
-      if (onHour1 > 0 || onMinute1 > 0) {
-        targetTimeRelay1 = onHour1 * 60 + onMinute1 + getCurrentTimeInMinutes();
+      if (onHour1 > -2 || onMinute1 > -2) {
+        if (onHour1 == -1 || onMinute1 == -1)
+          targetTimeRelay1 = 0;
+        else if (onHour1 > 0 || onMinute1 > 0) {
+          targetTimeRelay1 =
+              onHour1 * 60 + onMinute1 + getCurrentTimeInMinutes();
+        }
         Serial.print("Relay 1 Time Set: ");
         Serial.print(onHour1);
         Serial.print(" hours ");
@@ -124,8 +138,13 @@ void loop() {
       }
 
       // Check if the extracted values for relay 2 are non-zero
-      if (onHour2 > 0 || onMinute2 > 0) {
-        targetTimeRelay2 = onHour2 * 60 + onMinute2 + getCurrentTimeInMinutes();
+      if (onHour2 > -2 || onMinute2 > -2) {
+        if (onHour2 == -1 || onMinute2 == -1)
+          targetTimeRelay2 = 0;
+        else if (onHour2 > 0 || onMinute2 > 0) {
+          targetTimeRelay2 =
+              onHour2 * 60 + onMinute2 + getCurrentTimeInMinutes();
+        }
         Serial.print("Relay 2 Time Set: ");
         Serial.print(onHour2);
         Serial.print(" hours ");
@@ -147,13 +166,13 @@ void loop() {
     client.println("<h1>ESP8266 Web Relay Control</h1>");
     client.println("<form>");
     client.println("Relay 1 Time: Hour: <input type='number' name='hour1' "
-                   "min='0' max='99'>");
+                   "min='-1' max='99'>");
     client.println(
-        "Minute: <input type='number' name='minute1' min='0' max='999'><br>");
+        "Minute: <input type='number' name='minute1' min='-1' max='999'><br>");
     client.println("Relay 2 Time: Hour: <input type='number' name='hour2' "
-                   "min='0' max='99'>");
+                   "min='-1' max='99'>");
     client.println(
-        "Minute: <input type='number' name='minute2' min='0' max='999'><br>");
+        "Minute: <input type='number' name='minute2' min='-1' max='999'><br>");
     client.println("<input type='submit' value='Set Time'>");
     client.println("</form>");
     client.println("</body>");
@@ -282,5 +301,26 @@ void handleGetValues(WiFiClient client) {
   client.println("Content-Type: application/json");
   client.println("Connection: close");
   client.println();
-  //   client.println(response);
+  client.println(response);
+}
+
+void createOwnNetwork() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Creating Network");
+
+  // Set up your own network
+  // Configure the SoftAP (Access Point)
+  const char *ap_ssid = "TimerSwitch";
+  const char *ap_password = "Password@!";
+  WiFi.softAP(ap_ssid, ap_password);
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("IP: ");
+  lcd.setCursor(3, 1);
+  lcd.print(WiFi.softAPIP());
+  Serial.println(WiFi.softAPIP());
+  delay(2000);
+  Serial.println("Own network created");
 }

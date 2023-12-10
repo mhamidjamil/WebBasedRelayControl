@@ -1,6 +1,6 @@
 //$ last work 10/December/23 [12:27 AM]
-// # version 0.4
-// # Release Note : created own network if not connected within timeout
+// # version 0.5
+// # Release Note : Permanently on/off switch
 #include "arduino_secrets.h"
 #include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
@@ -14,7 +14,7 @@ const char *password = MY_PASSWORD;
 // Create an instance of the LiquidCrystal_I2C class
 LiquidCrystal_I2C lcd(0x27, 16, 2); // 0x27 is the I2C address for the LCD
 
-#define WIFI_CONNECTION_TIMEOUT 10 // 10 seconds
+#define WIFI_CONNECTION_TIMEOUT 15 // 15 seconds
 
 // Define the pin numbers for the relays
 const int relay1Pin = 12;   // Change to your desired pin for relay 1
@@ -126,6 +126,8 @@ void loop() {
       if (onHour1 > -2 || onMinute1 > -2) {
         if (onHour1 == -1 || onMinute1 == -1)
           targetTimeRelay1 = 0;
+        else if (onHour1 == 998 || onMinute1 == 998)
+          targetTimeRelay1 = 998;
         else if (onHour1 > 0 || onMinute1 > 0) {
           targetTimeRelay1 =
               onHour1 * 60 + onMinute1 + getCurrentTimeInMinutes();
@@ -141,6 +143,8 @@ void loop() {
       if (onHour2 > -2 || onMinute2 > -2) {
         if (onHour2 == -1 || onMinute2 == -1)
           targetTimeRelay2 = 0;
+        else if (onHour2 == 998 || onMinute2 == 998)
+          targetTimeRelay2 = 998;
         else if (onHour2 > 0 || onMinute2 > 0) {
           targetTimeRelay2 =
               onHour2 * 60 + onMinute2 + getCurrentTimeInMinutes();
@@ -162,17 +166,44 @@ void loop() {
     // Display the HTML web page
     client.println("<!DOCTYPE HTML>");
     client.println("<html>");
+    client.println("<head>");
+    client.println("<script>");
+    client.println("function forceOn(relayNumber) {");
+    client.println(
+        "  document.getElementById('minute' + relayNumber).value = 998;");
+    client.println("  return false;"); // Prevent form submission
+    client.println("}");
+    client.println("function forceOff(relayNumber) {");
+    client.println(
+        "  document.getElementById('minute' + relayNumber).value = -1;");
+    client.println("  return false;"); // Prevent form submission
+    client.println("}");
+    client.println("</script>");
+    client.println("</head>");
     client.println("<body>");
     client.println("<h1>ESP8266 Web Relay Control</h1>");
     client.println("<form>");
+
+    // Relay 1
     client.println("Relay 1 Time: Hour: <input type='number' name='hour1' "
-                   "min='-1' max='99'>");
+                   "min='-1' max='999'>");
+    client.println("Minute: <input type='number' id='minute1' name='minute1' "
+                   "min='-1' max='999'>");
     client.println(
-        "Minute: <input type='number' name='minute1' min='-1' max='999'><br>");
+        "<button type='submit' onclick='forceOn(1)'>Force On</button>");
+    client.println(
+        "<button type='submit' onclick='forceOff(1)'>Force Off</button><br>");
+
+    // Relay 2
     client.println("Relay 2 Time: Hour: <input type='number' name='hour2' "
-                   "min='-1' max='99'>");
+                   "min='-1' max='999'>");
+    client.println("Minute: <input type='number' id='minute2' name='minute2' "
+                   "min='-1' max='999'>");
     client.println(
-        "Minute: <input type='number' name='minute2' min='-1' max='999'><br>");
+        "<button type='submit' onclick='forceOn(2)'>Force On</button>");
+    client.println(
+        "<button type='submit' onclick='forceOff(2)'>Force Off</button><br>");
+
     client.println("<input type='submit' value='Set Time'>");
     client.println("</form>");
     client.println("</body>");
@@ -180,24 +211,28 @@ void loop() {
   }
 
   // Turn on relays if the current time matches
-  if (getCurrentTimeInMinutes() >=
-      targetTimeRelay1) { // means relay should be off
+  if (getCurrentTimeInMinutes() >= targetTimeRelay1 ||
+      targetTimeRelay1 != 998) { // means relay should be off
     turnRelay(1, false);
     line1 = "Relay 1 off";
   } else {
     turnRelay(1, true);
-    line1 = "Relay 1 on " +
-            timeToString(targetTimeRelay1 - getCurrentTimeInMinutes());
+    targetTimeRelay1 == 998
+        ? line1 = "Relay 1 ON."
+        : line1 = "Relay 1 on " +
+                  timeToString(targetTimeRelay1 - getCurrentTimeInMinutes());
   }
 
-  if (getCurrentTimeInMinutes() >=
-      targetTimeRelay2) { // means relay should be off
+  if (getCurrentTimeInMinutes() >= targetTimeRelay2 ||
+      targetTimeRelay2 != 998) { // means relay should be off
     turnRelay(2, false);
     line2 = "Relay 2 off";
   } else {
     turnRelay(2, true);
-    line2 = "Relay 2 on " +
-            timeToString(targetTimeRelay2 - getCurrentTimeInMinutes());
+    targetTimeRelay2 == 998
+        ? line2 = "Relay 2 ON."
+        : line2 = "Relay 2 on " +
+                  timeToString(targetTimeRelay2 - getCurrentTimeInMinutes());
   }
   showRelayTiming();
   // Wait a little before responding to the next request
@@ -240,13 +275,21 @@ void showRelayTiming() {
       line2 = "Relays are off";
     } else if (line1.indexOf("on") != -1 && line2.indexOf("on") != -1) {
       // if charging and both relays are scheduled
-      line2 =
-          "R1: " + timeToString(targetTimeRelay1 - getCurrentTimeInMinutes()) +
-          "," +
-          "R2: " + timeToString(targetTimeRelay2 - getCurrentTimeInMinutes());
+      line2 = (targetTimeRelay1 == 998
+                   ? "R1:ON"
+                   : "R1: " + timeToString(targetTimeRelay1 -
+                                           getCurrentTimeInMinutes())) +
+              "," +
+              (targetTimeRelay2 == 998
+                   ? "R2:ON"
+                   : "R2: " + timeToString(targetTimeRelay2 -
+                                           getCurrentTimeInMinutes()));
     } else if (line1.indexOf("on") != -1 || line2.indexOf("on") != -1) {
       // in case if only one relay in scheduled
-      line1.indexOf("on") != -1 ? line2 = line1 : "line2 remains as it is";
+      line1.indexOf("on") != -1
+          ? (targetTimeRelay1 == 998 ? line2 = "R1:ON" : line2 = line1)
+      : targetTimeRelay2 == 998 ? line2 = "R2:ON"
+                                : line2 = line2;
     }
     line1 = "Charging...";
   } else if (line1.indexOf("on") != -1 && line2.indexOf("on")) {

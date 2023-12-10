@@ -1,7 +1,8 @@
-//$ last work 26/August/23 [10:39 PM]
-// # version 0.1
-// # Release Note : First commit of project timely
+//$ last work 10/December/23 [12:27 AM]
+// # version 0.5
+// # Release Note : Permanently on switch
 #include "arduino_secrets.h"
+#include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
 #include <LiquidCrystal_I2C.h>
 #include <Wire.h>
@@ -12,6 +13,8 @@ const char *password = MY_PASSWORD;
 
 // Create an instance of the LiquidCrystal_I2C class
 LiquidCrystal_I2C lcd(0x27, 16, 2); // 0x27 is the I2C address for the LCD
+
+#define WIFI_CONNECTION_TIMEOUT 15 // 15 seconds
 
 // Define the pin numbers for the relays
 const int relay1Pin = 12;   // Change to your desired pin for relay 1
@@ -53,17 +56,24 @@ void setup() {
   WiFi.begin(ssid, password);
   lcd.clear();
   lcd.setCursor(0, 0);
-  while (WiFi.status() != WL_CONNECTED) {
+  while (WiFi.status() != WL_CONNECTED &&
+         (millis() / 1000) < WIFI_CONNECTION_TIMEOUT) {
     delay(1000);
-    lcd.print("Connected");
     Serial.println("Connecting to WiFi...");
+    lcd.setCursor(0, 0);
+    lcd.print("Connecting...");
   }
 
-  // Display connected to Wi-Fi message
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Connected");
-  Serial.println("Connected");
+  // Check if connected
+  if (WiFi.status() == WL_CONNECTED) {
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Connected");
+    Serial.println("Connected");
+  } else {
+    // If not connected within the timeout, create its own network
+    createOwnNetwork();
+  }
 
   // Set up the relays as outputs
   pinMode(relay1Pin, OUTPUT);
@@ -86,8 +96,11 @@ void loop() {
     // Read the first line of the request
     String request = client.readStringUntil('\r');
     Serial.println(request);
-    client.flush();
-
+    if (request.indexOf("GET /get-values") != -1) {
+      handleGetValues(client);
+    } else {
+      client.flush();
+    }
     // Extract hour and minute for relay 1 and relay 2 from the request
     if (request.indexOf("GET /?") != -1) {
       int onHour1 =
@@ -110,8 +123,15 @@ void loop() {
               .toInt();
 
       // Check if the extracted values for relay 1 are non-zero
-      if (onHour1 > 0 || onMinute1 > 0) {
-        targetTimeRelay1 = onHour1 * 60 + onMinute1 + getCurrentTimeInMinutes();
+      if (onHour1 > -2 || onMinute1 > -2) {
+        if (onHour1 == -1 || onMinute1 == -1)
+          targetTimeRelay1 = 0;
+        else if (onHour1 == 998 || onMinute1 == 998)
+          targetTimeRelay1 = 998;
+        else if (onHour1 > 0 || onMinute1 > 0) {
+          targetTimeRelay1 =
+              onHour1 * 60 + onMinute1 + getCurrentTimeInMinutes();
+        }
         Serial.print("Relay 1 Time Set: ");
         Serial.print(onHour1);
         Serial.print(" hours ");
@@ -120,8 +140,15 @@ void loop() {
       }
 
       // Check if the extracted values for relay 2 are non-zero
-      if (onHour2 > 0 || onMinute2 > 0) {
-        targetTimeRelay2 = onHour2 * 60 + onMinute2 + getCurrentTimeInMinutes();
+      if (onHour2 > -2 || onMinute2 > -2) {
+        if (onHour2 == -1 || onMinute2 == -1)
+          targetTimeRelay2 = 0;
+        else if (onHour2 == 998 || onMinute2 == 998)
+          targetTimeRelay2 = 998;
+        else if (onHour2 > 0 || onMinute2 > 0) {
+          targetTimeRelay2 =
+              onHour2 * 60 + onMinute2 + getCurrentTimeInMinutes();
+        }
         Serial.print("Relay 2 Time Set: ");
         Serial.print(onHour2);
         Serial.print(" hours ");
@@ -139,41 +166,73 @@ void loop() {
     // Display the HTML web page
     client.println("<!DOCTYPE HTML>");
     client.println("<html>");
+    client.println("<head>");
+    client.println("<script>");
+    client.println("function forceOn(relayNumber) {");
+    client.println(
+        "  document.getElementById('minute' + relayNumber).value = 998;");
+    client.println("  return false;"); // Prevent form submission
+    client.println("}");
+    client.println("function forceOff(relayNumber) {");
+    client.println(
+        "  document.getElementById('minute' + relayNumber).value = -1;");
+    client.println("  return false;"); // Prevent form submission
+    client.println("}");
+    client.println("</script>");
+    client.println("</head>");
     client.println("<body>");
     client.println("<h1>ESP8266 Web Relay Control</h1>");
     client.println("<form>");
+
+    // Relay 1
     client.println("Relay 1 Time: Hour: <input type='number' name='hour1' "
-                   "min='0' max='99'>");
+                   "min='-1' max='999'>");
+    client.println("Minute: <input type='number' id='minute1' name='minute1' "
+                   "min='-1' max='999'>");
     client.println(
-        "Minute: <input type='number' name='minute1' min='0' max='999'><br>");
+        "<button type='submit' onclick='forceOn(1)'>Force On</button>");
+    client.println(
+        "<button type='submit' onclick='forceOff(1)'>Force Off</button><br>");
+
+    // Relay 2
     client.println("Relay 2 Time: Hour: <input type='number' name='hour2' "
-                   "min='0' max='99'>");
+                   "min='-1' max='999'>");
+    client.println("Minute: <input type='number' id='minute2' name='minute2' "
+                   "min='-1' max='999'>");
     client.println(
-        "Minute: <input type='number' name='minute2' min='0' max='999'><br>");
+        "<button type='submit' onclick='forceOn(2)'>Force On</button>");
+    client.println(
+        "<button type='submit' onclick='forceOff(2)'>Force Off</button><br>");
+
     client.println("<input type='submit' value='Set Time'>");
     client.println("</form>");
     client.println("</body>");
     client.println("</html>");
   }
+
   // Turn on relays if the current time matches
-  if (getCurrentTimeInMinutes() >=
-      targetTimeRelay1) { // means relay should be off
+  if (getCurrentTimeInMinutes() >= targetTimeRelay1 ||
+      targetTimeRelay1 != 998) { // means relay should be off
     turnRelay(1, false);
     line1 = "Relay 1 off";
   } else {
     turnRelay(1, true);
-    line1 = "Relay 1 on " +
-            timeToString(targetTimeRelay1 - getCurrentTimeInMinutes());
+    targetTimeRelay1 == 998
+        ? line1 = "Relay 1 ON."
+        : line1 = "Relay 1 on " +
+                  timeToString(targetTimeRelay1 - getCurrentTimeInMinutes());
   }
 
-  if (getCurrentTimeInMinutes() >=
-      targetTimeRelay2) { // means relay should be off
+  if (getCurrentTimeInMinutes() >= targetTimeRelay2 ||
+      targetTimeRelay2 != 998) { // means relay should be off
     turnRelay(2, false);
     line2 = "Relay 2 off";
   } else {
     turnRelay(2, true);
-    line2 = "Relay 2 on " +
-            timeToString(targetTimeRelay2 - getCurrentTimeInMinutes());
+    targetTimeRelay2 == 998
+        ? line2 = "Relay 2 ON."
+        : line2 = "Relay 2 on " +
+                  timeToString(targetTimeRelay2 - getCurrentTimeInMinutes());
   }
   showRelayTiming();
   // Wait a little before responding to the next request
@@ -216,13 +275,21 @@ void showRelayTiming() {
       line2 = "Relays are off";
     } else if (line1.indexOf("on") != -1 && line2.indexOf("on") != -1) {
       // if charging and both relays are scheduled
-      line2 =
-          "R1: " + timeToString(targetTimeRelay1 - getCurrentTimeInMinutes()) +
-          "," +
-          "R2: " + timeToString(targetTimeRelay2 - getCurrentTimeInMinutes());
+      line2 = (targetTimeRelay1 == 998
+                   ? "R1:ON"
+                   : "R1: " + timeToString(targetTimeRelay1 -
+                                           getCurrentTimeInMinutes())) +
+              "," +
+              (targetTimeRelay2 == 998
+                   ? "R2:ON"
+                   : "R2: " + timeToString(targetTimeRelay2 -
+                                           getCurrentTimeInMinutes()));
     } else if (line1.indexOf("on") != -1 || line2.indexOf("on") != -1) {
       // in case if only one relay in scheduled
-      line1.indexOf("on") != -1 ? line2 = line1 : "line2 remains as it is";
+      line1.indexOf("on") != -1
+          ? (targetTimeRelay1 == 998 ? line2 = "R1:ON" : line2 = line1)
+      : targetTimeRelay2 == 998 ? line2 = "R2:ON"
+                                : line2 = line2;
     }
     line1 = "Charging...";
   } else if (line1.indexOf("on") != -1 && line2.indexOf("on")) {
@@ -257,4 +324,46 @@ String timeToString(unsigned int timeInMinutes) {
             String((timeInMinutes % 1440) / 60) + ":" +
             String((timeInMinutes % 1440) % 60));
   }
+}
+
+void handleGetValues(WiFiClient client) {
+  // Create a JSON document to store values
+  DynamicJsonDocument doc(1024);
+
+  // Add the variables you want to retrieve
+  doc["targetTimeRelay1"] = targetTimeRelay1;
+  doc["targetTimeRelay2"] = targetTimeRelay2;
+  doc["currentTime"] = getCurrentTimeInMinutes();
+
+  // Serialize the JSON document
+  String response;
+  serializeJson(doc, response);
+
+  // Send the response
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: application/json");
+  client.println("Connection: close");
+  client.println();
+  client.println(response);
+}
+
+void createOwnNetwork() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Creating Network");
+
+  // Set up your own network
+  // Configure the SoftAP (Access Point)
+  const char *ap_ssid = "TimerSwitch";
+  const char *ap_password = "Password@!";
+  WiFi.softAP(ap_ssid, ap_password);
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("IP: ");
+  lcd.setCursor(3, 1);
+  lcd.print(WiFi.softAPIP());
+  Serial.println(WiFi.softAPIP());
+  delay(2000);
+  Serial.println("Own network created");
 }

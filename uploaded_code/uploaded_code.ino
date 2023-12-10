@@ -1,3 +1,6 @@
+//$ last work 26/August/23 [10:39 PM]
+// # version 0.1
+// # Release Note : First commit of project timely
 #include "arduino_secrets.h"
 #include <ESP8266WiFi.h>
 #include <LiquidCrystal_I2C.h>
@@ -11,14 +14,20 @@ const char *password = MY_PASSWORD;
 LiquidCrystal_I2C lcd(0x27, 16, 2); // 0x27 is the I2C address for the LCD
 
 // Define the pin numbers for the relays
-const int relay1Pin = 12; // Change to your desired pin for relay 1
-const int relay2Pin = 13; // Change to your desired pin for relay 2
+const int relay1Pin = 12;   // Change to your desired pin for relay 1
+const int relay2Pin = 13;   // Change to your desired pin for relay 2
+const int chargingPin = 16; // D0 pin on NodeMCU
+bool chargingState = false;
 
 // Variables to store the time to turn on each relay
 unsigned long targetTimeRelay1 = 0;
 unsigned long targetTimeRelay2 = 0;
 // dealing system in minutes instead of milliseconds
 // # use getCurrentTimeInMinutes() instead of mills()
+// FIXME: Dealing in minutes cost:
+// if you want to off relay after 1 minute and the current system time is:
+// in seconds => 23 seconds then you relay will be off in 37 seconds instead of
+// 60 seconds
 
 String line1, line2;
 
@@ -65,7 +74,9 @@ void setup() {
   digitalWrite(relay2Pin, HIGH);
 
   server.begin(); // Start the server
+  pinMode(chargingPin, INPUT);
 }
+
 void loop() {
   // Check if a client has connected
   WiFiClient client = server.available();
@@ -151,7 +162,7 @@ void loop() {
     line1 = "Relay 1 off";
   } else {
     turnRelay(1, true);
-    line1 = "Relay 1 On " +
+    line1 = "Relay 1 on " +
             timeToString(targetTimeRelay1 - getCurrentTimeInMinutes());
   }
 
@@ -161,15 +172,22 @@ void loop() {
     line2 = "Relay 2 off";
   } else {
     turnRelay(2, true);
-    line2 = "Relay 2 On " +
+    line2 = "Relay 2 on " +
             timeToString(targetTimeRelay2 - getCurrentTimeInMinutes());
   }
   showRelayTiming();
   // Wait a little before responding to the next request
-  delay(1000);
-  if (millis() < 10000) {
-    Serial.print("Time: " + String(getCurrentTimeInMinutes()));
+  int chargingStatus = digitalRead(chargingPin);
+
+  if (chargingStatus == HIGH && !chargingState) {
+    Serial.println("D0 pin is HIGH");
+    chargingState = !chargingState;
+  } else if (chargingStatus == LOW && chargingState) {
+    Serial.println("D0 pin is LOW");
+    chargingState = !chargingState;
   }
+
+  delay(1000);
 }
 
 void show(int line_number, int column_number, String message) {
@@ -189,11 +207,33 @@ void show(String message) {
 
 void showRelayTiming() {
   lcd.clear();
+  int chargingStatus = digitalRead(chargingPin);
+
+  if (chargingStatus == HIGH) {
+    // if charging and at least one or no relay is scheduled
+    if (line1.indexOf("off") != -1 &&
+        line2.indexOf("off") != -1) { // in case both relays are off
+      line2 = "Relays are off";
+    } else if (line1.indexOf("on") != -1 && line2.indexOf("on") != -1) {
+      // if charging and both relays are scheduled
+      line2 =
+          "R1: " + timeToString(targetTimeRelay1 - getCurrentTimeInMinutes()) +
+          "," +
+          "R2: " + timeToString(targetTimeRelay2 - getCurrentTimeInMinutes());
+    } else if (line1.indexOf("on") != -1 || line2.indexOf("on") != -1) {
+      // in case if only one relay in scheduled
+      line1.indexOf("on") != -1 ? line2 = line1 : "line2 remains as it is";
+    }
+    line1 = "Charging...";
+  } else if (line1.indexOf("on") != -1 && line2.indexOf("on")) {
+    // default case, both relays are scheduled and not charging
+    //` no need to be change
+  } else if (line1.indexOf("off") != -1 && line2.indexOf("off") != -1) {
+    // if both relays are not scheduled and not charging
+    // #will work in future
+  }
   show(0, 0, line1);
   show(1, 0, line2);
-  // TODO: Need more optimization
-  // if there is not data to show then ask orange-pi pi for time or notification
-  // or set display off
 }
 
 void turnRelay(int relayNumber, bool state) {

@@ -1,7 +1,8 @@
-//$ last work 26/August/23 [10:39 PM]
-// # version 0.1
-// # Release Note : First commit of project timely
+//$ last work 10/December/23 [11:14 PM]
+// # version 0.2
+// # Release Note : charging state work added
 #include "arduino_secrets.h"
+#include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
 #include <LiquidCrystal_I2C.h>
 #include <Wire.h>
@@ -86,8 +87,11 @@ void loop() {
     // Read the first line of the request
     String request = client.readStringUntil('\r');
     Serial.println(request);
-    client.flush();
-
+    if (request.indexOf("GET /get-values") != -1) {
+      handleGetValues(client);
+    } else {
+      client.flush();
+    }
     // Extract hour and minute for relay 1 and relay 2 from the request
     if (request.indexOf("GET /?") != -1) {
       int onHour1 =
@@ -155,6 +159,7 @@ void loop() {
     client.println("</body>");
     client.println("</html>");
   }
+
   // Turn on relays if the current time matches
   if (getCurrentTimeInMinutes() >=
       targetTimeRelay1) { // means relay should be off
@@ -257,4 +262,25 @@ String timeToString(unsigned int timeInMinutes) {
             String((timeInMinutes % 1440) / 60) + ":" +
             String((timeInMinutes % 1440) % 60));
   }
+}
+
+void handleGetValues(WiFiClient client) {
+  // Create a JSON document to store values
+  DynamicJsonDocument doc(1024);
+
+  // Add the variables you want to retrieve
+  doc["targetTimeRelay1"] = targetTimeRelay1;
+  doc["targetTimeRelay2"] = targetTimeRelay2;
+  doc["currentTime"] = getCurrentTimeInMinutes();
+
+  // Serialize the JSON document
+  String response;
+  serializeJson(doc, response);
+
+  // Send the response
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: application/json");
+  client.println("Connection: close");
+  client.println();
+  client.println(response);
 }

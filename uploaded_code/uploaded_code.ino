@@ -1,6 +1,7 @@
-//$ last work 10/December/23 [12:27 AM]
-// # version 0.5
-// # Release Note : Permanently on switch
+//$ last work 13/December/23 [01:47 AM]
+// # version 0.6
+// # Release Note : Fix: unable to set timer from web
+
 #include "arduino_secrets.h"
 #include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
@@ -211,28 +212,28 @@ void loop() {
   }
 
   // Turn on relays if the current time matches
-  if (getCurrentTimeInMinutes() >= targetTimeRelay1 ||
-      targetTimeRelay1 != 998) { // means relay should be off
-    turnRelay(1, false);
-    line1 = "Relay 1 off";
-  } else {
+  if (targetTimeRelay1 == 998 || getCurrentTimeInMinutes() < targetTimeRelay1) {
     turnRelay(1, true);
     targetTimeRelay1 == 998
         ? line1 = "Relay 1 ON."
         : line1 = "Relay 1 on " +
                   timeToString(targetTimeRelay1 - getCurrentTimeInMinutes());
+  } else if (getCurrentTimeInMinutes() >=
+             targetTimeRelay1) { // means relay should be off
+    turnRelay(1, false);
+    line1 = "Relay 1 off";
   }
 
-  if (getCurrentTimeInMinutes() >= targetTimeRelay2 ||
-      targetTimeRelay2 != 998) { // means relay should be off
-    turnRelay(2, false);
-    line2 = "Relay 2 off";
-  } else {
+  if (targetTimeRelay2 == 998 || getCurrentTimeInMinutes() < targetTimeRelay2) {
     turnRelay(2, true);
     targetTimeRelay2 == 998
         ? line2 = "Relay 2 ON."
         : line2 = "Relay 2 on " +
                   timeToString(targetTimeRelay2 - getCurrentTimeInMinutes());
+  } else if (getCurrentTimeInMinutes() >=
+             targetTimeRelay2) { // means relay should off
+    turnRelay(2, false);
+    line2 = "Relay 2 off";
   }
   showRelayTiming();
   // Wait a little before responding to the next request
@@ -354,8 +355,8 @@ void createOwnNetwork() {
 
   // Set up your own network
   // Configure the SoftAP (Access Point)
-  const char *ap_ssid = "TimerSwitch";
-  const char *ap_password = "Password@!";
+  const char *ap_ssid = SELF_SSID;
+  const char *ap_password = MY_PASSWORD;
   WiFi.softAP(ap_ssid, ap_password);
 
   lcd.clear();

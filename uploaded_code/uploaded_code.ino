@@ -1,4 +1,4 @@
-//$ last work 13/December/23 [01:47 AM]
+//$ last work 13/December/23 [02:00 AM]
 // # version 0.6
 // # Release Note : Fix: unable to set timer from web
 
@@ -122,6 +122,16 @@ void loop() {
               .substring(request.indexOf("minute2=") + 8,
                          request.indexOf('&', request.indexOf("minute2=")))
               .toInt();
+      int lcdLedValue =
+          request
+              .substring(request.indexOf("lcd=") + 4,
+                         request.indexOf('&', request.indexOf("lcd=")))
+              .toInt();
+
+      // Handle the LCD LED value
+      Serial.print("LCD LED Value Set: ");
+      Serial.println(lcdLedValue);
+      backlight(lcdLedValue);
 
       // Check if the extracted values for relay 1 are non-zero
       if (onHour1 > -2 || onMinute1 > -2) {
@@ -204,6 +214,10 @@ void loop() {
         "<button type='submit' onclick='forceOn(2)'>Force On</button>");
     client.println(
         "<button type='submit' onclick='forceOff(2)'>Force Off</button><br>");
+    client.println(
+        "<button type='submit' name='lcd' value='1'>LED On</button>");
+    client.println(
+        "<button type='submit' name='lcd' value='0'>LED Off</button>");
 
     client.println("<input type='submit' value='Set Time'>");
     client.println("</form>");
@@ -367,4 +381,10 @@ void createOwnNetwork() {
   Serial.println(WiFi.softAPIP());
   delay(2000);
   Serial.println("Own network created");
+}
+
+void backlight(int state) {
+  Serial.println("Function State " + String(state));
+  // state ? lcd.backlight() : lcd.noBacklight();
+  lcd.setBacklight(state);
 }

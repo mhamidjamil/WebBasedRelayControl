@@ -1,6 +1,7 @@
-//$ last work 10/December/23 [12:27 AM]
-// # version 0.5
-// # Release Note : Permanently on/off switch
+//$ last work 14/December/23 [02:23 AM]
+// # version 0.7
+// # Release Note : LCD brightness control added
+
 #include "arduino_secrets.h"
 #include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
@@ -121,6 +122,16 @@ void loop() {
               .substring(request.indexOf("minute2=") + 8,
                          request.indexOf('&', request.indexOf("minute2=")))
               .toInt();
+      int lcdLedValue =
+          request
+              .substring(request.indexOf("lcd=") + 4,
+                         request.indexOf('&', request.indexOf("lcd=")))
+              .toInt();
+
+      // Handle the LCD LED value
+      Serial.print("LCD LED Value Set: ");
+      Serial.println(lcdLedValue);
+      backlight(lcdLedValue);
 
       // Check if the extracted values for relay 1 are non-zero
       if (onHour1 > -2 || onMinute1 > -2) {
@@ -203,6 +214,10 @@ void loop() {
         "<button type='submit' onclick='forceOn(2)'>Force On</button>");
     client.println(
         "<button type='submit' onclick='forceOff(2)'>Force Off</button><br>");
+    client.println(
+        "<button type='submit' name='lcd' value='1'>LED On</button>");
+    client.println(
+        "<button type='submit' name='lcd' value='0'>LED Off</button>");
 
     client.println("<input type='submit' value='Set Time'>");
     client.println("</form>");
@@ -211,28 +226,28 @@ void loop() {
   }
 
   // Turn on relays if the current time matches
-  if (getCurrentTimeInMinutes() >= targetTimeRelay1 ||
-      targetTimeRelay1 != 998) { // means relay should be off
-    turnRelay(1, false);
-    line1 = "Relay 1 off";
-  } else {
+  if (targetTimeRelay1 == 998 || getCurrentTimeInMinutes() < targetTimeRelay1) {
     turnRelay(1, true);
     targetTimeRelay1 == 998
         ? line1 = "Relay 1 ON."
         : line1 = "Relay 1 on " +
                   timeToString(targetTimeRelay1 - getCurrentTimeInMinutes());
+  } else if (getCurrentTimeInMinutes() >=
+             targetTimeRelay1) { // means relay should be off
+    turnRelay(1, false);
+    line1 = "Relay 1 off";
   }
 
-  if (getCurrentTimeInMinutes() >= targetTimeRelay2 ||
-      targetTimeRelay2 != 998) { // means relay should be off
-    turnRelay(2, false);
-    line2 = "Relay 2 off";
-  } else {
+  if (targetTimeRelay2 == 998 || getCurrentTimeInMinutes() < targetTimeRelay2) {
     turnRelay(2, true);
     targetTimeRelay2 == 998
         ? line2 = "Relay 2 ON."
         : line2 = "Relay 2 on " +
                   timeToString(targetTimeRelay2 - getCurrentTimeInMinutes());
+  } else if (getCurrentTimeInMinutes() >=
+             targetTimeRelay2) { // means relay should off
+    turnRelay(2, false);
+    line2 = "Relay 2 off";
   }
   showRelayTiming();
   // Wait a little before responding to the next request
@@ -354,8 +369,8 @@ void createOwnNetwork() {
 
   // Set up your own network
   // Configure the SoftAP (Access Point)
-  const char *ap_ssid = "TimerSwitch";
-  const char *ap_password = "Password@!";
+  const char *ap_ssid = SELF_SSID;
+  const char *ap_password = MY_PASSWORD;
   WiFi.softAP(ap_ssid, ap_password);
 
   lcd.clear();
@@ -366,4 +381,10 @@ void createOwnNetwork() {
   Serial.println(WiFi.softAPIP());
   delay(2000);
   Serial.println("Own network created");
+}
+
+void backlight(int state) {
+  Serial.println("Function State " + String(state));
+  // state ? lcd.backlight() : lcd.noBacklight();
+  lcd.setBacklight(state);
 }
